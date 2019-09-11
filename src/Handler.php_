@@ -1,0 +1,324 @@
+<?php declare(strict_types=1);
+
+namespace Tolkam\ThrowableHandler;
+
+use Error;
+use ErrorException;
+use Throwable;
+
+class Handler
+{
+    /**
+     * filename to write errors to
+     * @var string
+     */
+    protected $filename;
+
+    /**
+     * expose errors flag
+     * @var bool
+     */
+    protected $exposeErrors;
+
+    /**
+     * verbose output flag
+     * @var bool
+     */
+    protected $verbose;
+
+    /**
+     * @param string|null  $filename Filename to write errors to
+     */
+    public function __construct(string $filename = null)
+    {
+        if ($filename !== null) {
+            $logDir = dirname($filename);
+            if (! is_dir($logDir)) {
+                $this->exposeErrors = true;
+                $this->sendResponse(sprintf(
+                    '%s: Directory %s does not exist',
+                    __CLASS__,
+                    $logDir
+                ));
+            }
+
+            $this->filename = $filename;
+        }
+    }
+
+    /**
+     * Enables real error message printing
+     *
+     * @return self
+     */
+    public function exposeErrors()
+    {
+        $this->exposeErrors = true;
+        return $this;
+    }
+
+    /**
+     * Enables verbose output
+     *
+     * @return self
+     */
+    public function verbose()
+    {
+        $this->verbose = true;
+        return $this;
+    }
+
+    /**
+     * Register all handlers
+     * @return self
+     */
+    public function catchAll()
+    {
+        $this->catchErrors();
+        $this->catchShutdown();
+        $this->catchThrowables();
+        return $this;
+    }
+
+    /**
+     * Register errors handler
+     *
+     * @return void
+     */
+    public function catchErrors()
+    {
+        set_error_handler([$this, 'onError']);
+    }
+
+    /**
+     * Register shutdown handler
+     *
+     * @return void
+     */
+    public function catchShutdown()
+    {
+        register_shutdown_function([$this, 'onShutdown']);
+    }
+
+    /**
+     * Register throwables handler
+     *
+     * @return void
+     */
+    public function catchThrowables()
+    {
+        set_exception_handler([$this, 'handle']);
+    }
+
+    /**
+     * Process runtime errors
+     *
+     * @param  int $type
+     * @param  string $message
+     * @param  string $file
+     * @param  int $line
+     * @return void
+     */
+    public function onError(int $type, string $message, string $file, int $line)
+    {
+        // respect error reporting settings
+        if (! (error_reporting() & $type)) {
+            return;
+        }
+
+        // Convert to ErrorException and handle
+        $this->handle(new ErrorException($message, 0, $type, $file, $line), true);
+    }
+
+    /**
+     * Process shutdown errors
+     *
+     * In PHP7 fatal errors are Throwables,
+     * but php.net says "most", not "all". So, just in case
+     *
+     * @return void
+     */
+    public function onShutdown()
+    {
+        // get last occurred error
+        $error = error_get_last();
+
+        if (empty($error)) {
+            return;
+        }
+
+        // clean the output buffer -
+        // everything that were outputed so far
+        ob_get_level() and ob_clean();
+
+        // Convert to ErrorException and handle
+        $this->handle(new ErrorException(
+            $error['message'],
+            0,
+            $error['type'],
+            $error['file'],
+            $error['line']
+        ), true);
+    }
+
+
+    /**
+     * Handles throwable
+     *
+     * @param  Throwable $t
+     * @param  bool      $isLocal  If instantiated locally
+     * @return void
+     */
+    public function handle(Throwable $t, bool $isLocal = false)
+    {
+        // get message string
+        $message = $this->toString($t);
+
+        $trace = $t->getTrace();
+
+        // exclude self methods if Throwable build locally
+        if ($isLocal) {
+            $trace = array_slice($trace, 2);
+        }
+
+        $trace = $this->traceToString($trace);
+
+        $this->writeLog($message, $trace);
+
+        $this->sendResponse($message, $trace);
+    }
+
+    /**
+     * Writes error details to log
+     *
+     * @param  string      $message
+     * @param  string|null $trace
+     * @return void
+     */
+    protected function writeLog(string $message, string $trace = null)
+    {
+        if (empty($this->filename)) {
+            return;
+        }
+        
+        // cleanup
+        $message = trim($message);
+        $trace   = trim($trace);
+
+        // Always include trace and separate entries with a new line
+        // if trace is available
+        if (! empty($trace)) {
+            $message .= PHP_EOL . $trace . PHP_EOL;
+        }
+
+        // Message is sent to PHP system logger,
+        // using the Operating System's system logging mechanism or a file,
+        // depending on what the error_log configuration directive is set to
+        $messageType = 0;
+
+        // Message is appended to the file destination.
+        // A newline is not automatically added to the end of the message string
+        // Date is not automatically added too
+        if ($this->filename) {
+            $messageType = 3;
+            $message = '[' . date('d-M-Y H:i:s e') . '] ' . $message . PHP_EOL;
+        }
+
+        // Try to write
+        if (! @error_log($message, $messageType, $this->filename)) {
+            $this->sendResponse(__CLASS__ . ': Failed to write to log file');
+            exit(1);
+        }
+    }
+
+    /**
+     * Prints the response
+     *
+     * @param  string      $message
+     * @param  string|null $trace
+     * @return void
+     */
+    protected function sendResponse(string $message, string $trace = null)
+    {
+        $body = 'An error has occurred';
+
+        // Expose full message
+        if ($this->exposeErrors) {
+            $body = $message;
+        }
+
+        // Include trace
+        if ($this->verbose && ! empty($trace) && $this->exposeErrors) {
+            $body .= PHP_EOL . $trace;
+        }
+
+        // Command line
+        if (PHP_SAPI == 'cli') {
+            if ($_SERVER['TERM'] ?? null) {
+                echo "\033[41;1;97m " . $body . " \033[0m\n";
+            }
+
+            // HTTP
+        } else {
+            if (! headers_sent()) {
+                header('HTTP/1.0 500 Unknown Error');
+                header('Content-Type: text/plain; charset=utf-8');
+                header('Cache-Control: private, no-cache, no-store, must-revalidate');
+                header('Pragma: no-cache');
+                header('Expires: Sat, 01 Jan 2000 00:00:00 GMT');
+            }
+            echo $body;
+        }
+
+        // eit with failure status
+        exit(1);
+    }
+
+    /**
+     * Builds error message
+     *
+     * @param  Throwable $t
+     * @return string
+     */
+    protected function toString(Throwable $t)
+    {
+        $class   = get_class($t);
+        $code    = $t->getCode();
+        $message = $t->getMessage();
+        $file    = $t->getFile();
+        $line    = $t->getLine();
+
+        if ($t instanceof ErrorException) {
+            $code = $t->getSeverity();
+        }
+
+        return "{$class}({$code}): {$message} in {$file}:{$line}";
+    }
+
+    /**
+     * Build trace string
+     *
+     * @param  array  $trace
+     * @return string
+     */
+    protected function traceToString(array $trace)
+    {
+        $k = 0;
+        $out = '';
+    
+        $out .= 'Stack trace:' . PHP_EOL;
+        foreach ($trace as $k => $item) {
+            $file = $item['file'] ?? '-';
+            $line = $item['line'] ?? '-';
+
+            $out .= '#' . $k . ' ' . $file . '(' . $line . '): ';
+            if ($item['class'] ?? null) {
+                $out .= $item['class'] . '->';
+            }
+            $out .= $item['function'] . '()' . PHP_EOL;
+        }
+        $out .= '#' . ($k + 1) . ' {main}';
+
+        return $out;
+    }
+}

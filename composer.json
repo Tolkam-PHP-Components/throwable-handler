@@ -1,0 +1,19 @@
+{
+    "name": "tolkam/throwable-handler",
+    "description": "Allows to convert php errors to exceptions and handle them consistently",
+    "type": "library",
+    "license": "proprietary",
+    "autoload": {
+        "psr-4": {
+            "Tolkam\\ThrowableHandler\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=7.2"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "1.0-dev"
+        }
+    }
+}
