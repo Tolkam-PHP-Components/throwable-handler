@@ -12,21 +12,21 @@ class ThrowableHandler
      * @var string
      */
     protected $filename;
-
+    
     /**
      * expose errors flag
      * @var bool
      */
     protected $exposeErrors;
-
+    
     /**
      * verbose output flag
      * @var bool
      */
     protected $verboseErrors;
-
+    
     /**
-     * @param string|null  $filename Filename to write errors to
+     * @param string|null $filename Filename to write errors to
      */
     public function __construct(string $filename = null)
     {
@@ -36,12 +36,13 @@ class ThrowableHandler
         // check if log file is writable
         if ($filename && !@fopen($filename, 'a')) {
             $this->handle(new ErrorException(error_get_last()['message']));
+            
             return;
         }
         
         $this->filename = $filename;
     }
-
+    
     /**
      * Enables error message display
      *
@@ -51,7 +52,7 @@ class ThrowableHandler
     {
         $this->exposeErrors = true;
     }
-
+    
     /**
      * Enables verbose error message
      *
@@ -61,7 +62,7 @@ class ThrowableHandler
     {
         $this->verboseErrors = true;
     }
-
+    
     /**
      * Register all handlers
      *
@@ -73,7 +74,7 @@ class ThrowableHandler
         $this->catchShutdown();
         $this->catchExceptions();
     }
-
+    
     /**
      * Register errors handler
      *
@@ -83,7 +84,7 @@ class ThrowableHandler
     {
         set_error_handler([$this, 'onError']);
     }
-
+    
     /**
      * Register shutdown handler
      *
@@ -93,7 +94,7 @@ class ThrowableHandler
     {
         register_shutdown_function([$this, 'onShutdown']);
     }
-
+    
     /**
      * Register exceptions handler
      *
@@ -103,26 +104,27 @@ class ThrowableHandler
     {
         set_exception_handler([$this, 'handle']);
     }
-
+    
     /**
      * Process runtime errors
      *
-     * @param  int $type
-     * @param  string $message
-     * @param  string $file
-     * @param  int $line
+     * @param int    $type
+     * @param string $message
+     * @param string $file
+     * @param int    $line
+     *
      * @return void
      */
     public function onError(int $type, string $message, string $file, int $line)
     {
         // respect error reporting settings
-        if (! (error_reporting() & $type)) {
+        if (!(error_reporting() & $type)) {
             return;
         }
         
         $this->handle(new ErrorException($message, 0, $type, $file, $line));
     }
-
+    
     /**
      * Process shutdown errors
      *
@@ -139,14 +141,16 @@ class ThrowableHandler
         
         ob_get_level() && ob_clean();
         
-        $this->handle(new ErrorException($err['message'], 0, $err['type'], $err['file'], $err['line']));
+        $this->handle(new ErrorException(
+            $err['message'], 0, $err['type'], $err['file'], $err['line']
+        ));
     }
-
-
+    
     /**
      * Handles thrown error
      *
-     * @param  Throwable $t
+     * @param Throwable $t
+     *
      * @return void
      */
     public function handle(Throwable $t)
@@ -163,7 +167,7 @@ class ThrowableHandler
     protected function writeLog(Throwable $t)
     {
         $logEntry = (string) $t;
-    
+        
         if ($this->filename) {
             $logEntry = '[' . date('d-M-Y H:i:s e') . '] ' . $logEntry . PHP_EOL;
             error_log($logEntry, 3, $this->filename);
@@ -182,12 +186,12 @@ class ThrowableHandler
     protected function sendResponse(Throwable $t)
     {
         $body = $this->exposeErrors ? $t->__toString() : 'An error has occurred';
-
+        
         // Command line
         if (PHP_SAPI === 'cli') {
             $body = isset($_SERVER['TERM']) ? "\033[41;1;97m " . $body . " \033[0m\n" : $body;
         } else {
-            if (! headers_sent()) {
+            if (!headers_sent()) {
                 header('HTTP/1.0 500 Unknown Error');
                 header('Content-Type: text/plain; charset=utf-8');
                 header('Cache-Control: private, no-cache, no-store, must-revalidate');
@@ -197,7 +201,7 @@ class ThrowableHandler
         }
         
         echo $body;
-
+        
         // exit with failure status
         exit(1);
     }
