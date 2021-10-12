@@ -20,19 +20,10 @@ class ThrowableHandler
     protected $exposeErrors;
     
     /**
-     * verbose output flag
-     * @var bool
-     */
-    protected $verboseErrors;
-    
-    /**
      * @param string|null $filename Filename to write errors to
      */
     public function __construct(string $filename = null)
     {
-        // disable error displaying as we're going to display them ourselves
-        // ini_set('display_errors', '0');
-        
         // check if log file is writable
         if ($filename && !@fopen($filename, 'a')) {
             $this->handle(new ErrorException(error_get_last()['message']));
@@ -48,19 +39,9 @@ class ThrowableHandler
      *
      * @return void
      */
-    public function exposeErrors(): void
+    public function exposeErrors()
     {
         $this->exposeErrors = true;
-    }
-    
-    /**
-     * Enables verbose error message
-     *
-     * @return void
-     */
-    public function verboseErrors(): void
-    {
-        $this->verboseErrors = true;
     }
     
     /**
@@ -68,7 +49,7 @@ class ThrowableHandler
      *
      * @return void
      */
-    public function catchAll(): void
+    public function catchAll()
     {
         $this->catchErrors();
         $this->catchShutdown();
@@ -80,7 +61,7 @@ class ThrowableHandler
      *
      * @return void
      */
-    public function catchErrors(): void
+    public function catchErrors()
     {
         set_error_handler([$this, 'onError']);
     }
@@ -90,7 +71,7 @@ class ThrowableHandler
      *
      * @return void
      */
-    public function catchShutdown(): void
+    public function catchShutdown()
     {
         register_shutdown_function([$this, 'onShutdown']);
     }
@@ -100,7 +81,7 @@ class ThrowableHandler
      *
      * @return void
      */
-    public function catchExceptions(): void
+    public function catchExceptions()
     {
         set_exception_handler([$this, 'handle']);
     }
@@ -171,7 +152,8 @@ class ThrowableHandler
         if ($this->filename) {
             $logEntry = '[' . date('d-M-Y H:i:s e') . '] ' . $logEntry . PHP_EOL;
             error_log($logEntry, 3, $this->filename);
-        } else {
+        }
+        else {
             error_log($logEntry);
         }
     }
@@ -190,7 +172,8 @@ class ThrowableHandler
         // Command line
         if (PHP_SAPI === 'cli') {
             $body = isset($_SERVER['TERM']) ? "\033[41;1;97m " . $body . " \033[0m\n" : $body;
-        } else {
+        }
+        else {
             if (!headers_sent()) {
                 header('HTTP/1.0 500 Unknown Error');
                 header('Content-Type: text/plain; charset=utf-8');
