@@ -13,7 +13,7 @@ use Tolkam\ThrowableHandler\ThrowableHandler;
 
 // create handler with optional log file path
 $logTo = __DIR__ . '/error.log';
-$handler = new ThrowableHandler($logTo);
+$handler = new ThrowableHandler(/*$logTo*/);
 
 // choose what type of errors to handle
 $handler->catchErrors();
@@ -21,7 +21,7 @@ $handler->catchExceptions();
 $handler->catchShutdown();
 
 // expose errors details instead of generic message
-$handler->exposeErrors();
+//$handler->exposeErrors();
 
 throw new Exception('OMG!');
 ````
